@@ -3,7 +3,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from .models import DonHang, ChiTietDonHang
 from menu.models import SanPham          
-from tables.models import Ban           
+from tables.models import Ban    
+from accounts.models import KhachHang
 from decimal import Decimal
 from datetime import datetime
 import json
