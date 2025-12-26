@@ -323,3 +323,178 @@ def api_danh_sach_don(request):
 
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def api_tao_don_online(request):
+
+    if request.method == "GET":
+        ma_nd = request.GET.get("ma_nd")
+
+
+    else:
+        if not request.body:
+            return JsonResponse(
+                {"error": "Body JSON trống"},
+                status=400
+            )
+
+        body = json.loads(request.body)
+        ma_nd = body.get("ma_nd")
+
+    if not ma_nd:
+        return JsonResponse({"error": "Thiếu ma_nd"}, status=400)
+
+    try:
+        kh = KhachHang.objects.get(ma_nd_id=ma_nd)
+    except KhachHang.DoesNotExist:
+        return JsonResponse({"error": "Khách hàng không tồn tại"}, status=404)
+
+    don = DonHang.objects.create(
+        ma_kh=kh,
+        ma_ban=None,
+        ma_nv=2,
+        nguon_don="online",
+        trang_thai="Chờ xác nhận",
+        tong_tien=0,
+        giam_gia=0,
+        phuong_thuc_tt="Tiền mặt",
+        ngay_tao=datetime.now()
+    )
+
+    return JsonResponse({
+        "status": "success",
+        "message": "Tạo đơn online thành công",
+        "ma_dh": don.ma_dh
+    }, status=201)
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def api_them_chi_tiet_online(request):
+    try:
+        body = json.loads(request.body)
+        ma_dh = body.get("ma_dh")
+        ma_sp = body.get("ma_sp")
+        so_luong = int(body.get("so_luong", 1))
+        ghi_chu = body.get("ghi_chu", "")
+
+        if not ma_dh or not ma_sp:
+            return JsonResponse(
+                {"error": "Thiếu mã đơn hoặc mã sản phẩm"},
+                status=400
+            )
+
+        try:
+            don = DonHang.objects.get(ma_dh=ma_dh, nguon_don='online')
+            sp = SanPham.objects.get(ma_sp=ma_sp)
+        except DonHang.DoesNotExist:
+            return JsonResponse({"error": "Đơn online không tồn tại"}, status=404)
+        except SanPham.DoesNotExist:
+            return JsonResponse({"error": "Sản phẩm không tồn tại"}, status=404)
+
+        ChiTietDonHang.objects.create(
+            ma_dh=don,
+            ma_mon=sp,
+            so_luong=so_luong,
+            ghi_chu=ghi_chu,
+            trang_thai_mon='Chờ làm'
+        )
+
+        #  Cập nhật tổng tiền
+        tong = sum(
+            ct.ma_mon.gia * ct.so_luong
+            for ct in ChiTietDonHang.objects.filter(ma_dh=don)
+        )
+
+        don.tong_tien = tong
+        don.save()
+
+        return JsonResponse({
+            "status": "success",
+            "message": "Thêm món thành công",
+            "tong_tien": float(don.tong_tien)
+        })
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+def api_xem_don_online(request):
+    ma_dh = request.GET.get("ma_dh")
+
+    if not ma_dh:
+        return JsonResponse({"error": "Thiếu mã đơn"}, status=400)
+
+    try:
+        don = DonHang.objects.get(ma_dh=ma_dh)
+    except DonHang.DoesNotExist:
+        return JsonResponse({"error": "Không tìm thấy đơn"}, status=404)
+
+    return JsonResponse({
+        "ma_dh": don.ma_dh,
+        "nguon_don": don.nguon_don,
+        "trang_thai": don.trang_thai,
+        "tong_tien": float(don.tong_tien),
+        "khach_hang": don.ma_kh.ho_ten if don.ma_kh else None,
+        "ds_san_pham": [
+            {
+                "ten_sp": ct.ma_mon.ten_sp,
+                "gia": float(ct.ma_mon.gia),
+                "so_luong": ct.so_luong,
+                "ghi_chu": ct.ghi_chu,
+                "trang_thai_mon": ct.trang_thai_mon
+            }
+            for ct in don.chi_tiet.all()
+        ]
+    })
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def api_lich_su_don_online(request):
+    ma_nd = request.GET.get("ma_nd")
+    trang_thai = request.GET.get("trang_thai")  # optional
+
+    if not ma_nd:
+        return JsonResponse(
+            {"error": "Thiếu ma_nd"},
+            status=400
+        )
+
+    try:
+        kh = KhachHang.objects.get(ma_nd_id=ma_nd, loai_khach="online")
+    except KhachHang.DoesNotExist:
+        return JsonResponse(
+            {"error": "Khách hàng online không tồn tại"},
+            status=404
+        )
+
+    # Lấy đơn ONLINE của khách
+    don_hangs = DonHang.objects.filter(
+        ma_kh=kh,
+        nguon_don="online"
+    ).order_by("-ngay_tao")
+
+
+    if trang_thai:
+        don_hangs = don_hangs.filter(trang_thai=trang_thai)
+
+    data = []
+    for dh in don_hangs:
+        so_mon = ChiTietDonHang.objects.filter(ma_dh=dh).count()
+
+        data.append({
+            "ma_dh": dh.ma_dh,
+            "trang_thai": dh.trang_thai,
+            "tong_tien": float(dh.tong_tien),
+            "so_mon": so_mon,
+            "ngay_tao": dh.ngay_tao.strftime("%Y-%m-%d %H:%M:%S")
+        })
+
+    return JsonResponse({
+        "status": "success",
+        "ma_nd": ma_nd,
+        "total": len(data),
+        "data": data
+    })
+
