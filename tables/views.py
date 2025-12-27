@@ -1,104 +1,100 @@
-from django.http import JsonResponse
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
+from django.utils.decorators import method_decorator
+from rest_framework.permissions import IsAuthenticated
+
+from accounts.permissions import IsAdmin, IsStaff
 from .models import Ban
-import json
+from .serializers import BanSerializer
 
-# ============= HELPER FUNCTION =============
-def check_staff_permission(request):
-    """Kiem tra quyen Nhan vien"""
-    vai_tro = request.session.get('vai_tro')
-    if vai_tro != 'Nhân viên':
-        return False
-    return True
 
-# ============= BAN API =============
-@csrf_exempt
-@require_http_methods(["GET"])
-def api_ban_list(request):
-    """GET danh sach ban"""
-    bans = Ban.objects.all()
-    data = [{'ma_ban': ban.ma_ban, 'ten_ban': ban.ten_ban, 'trang_thai': ban.trang_thai} for ban in bans]
-    return JsonResponse({'status': 'success', 'data': data, 'total': len(data)})
+# ================= DANH SACH + TAO BAN =================
+@method_decorator(csrf_exempt, name='dispatch')
+class BanListCreateAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsStaff]
 
-@csrf_exempt
-@require_http_methods(["POST"])
-def api_ban_create(request):
-    """POST them ban - CHI NHAN VIEN"""
-    if not check_staff_permission(request):
-        return JsonResponse({'status': 'error', 'message': 'Khong co quyen truy cap'}, status=403)
-    try:
-        body = json.loads(request.body)
-        ten_ban = body.get('ten_ban')
-        trang_thai = body.get('trang_thai', 'Trống')
-        if not ten_ban:
-            return JsonResponse({'status': 'error', 'message': 'Thieu ten_ban'}, status=400)
-        ban = Ban.objects.create(ten_ban=ten_ban, trang_thai=trang_thai)
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Them ban thanh cong',
-            'data': {'ma_ban': ban.ma_ban, 'ten_ban': ban.ten_ban, 'trang_thai': ban.trang_thai}
-        }, status=201)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    def get(self, request):
+        bans = Ban.objects.all()
+        serializer = BanSerializer(bans, many=True)
+        return Response(serializer.data)
 
-@csrf_exempt
-@require_http_methods(["PUT"])
-def api_ban_update(request, ma_ban):
-    """PUT cap nhat ban - CHI NHAN VIEN"""
-    if not check_staff_permission(request):
-        return JsonResponse({'status': 'error', 'message': 'Khong co quyen truy cap'}, status=403)
-    try:
-        ban = Ban.objects.get(ma_ban=ma_ban)
-        body = json.loads(request.body)
-        ban.ten_ban = body.get('ten_ban', ban.ten_ban)
-        ban.trang_thai = body.get('trang_thai', ban.trang_thai)
-        ban.save()
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Cap nhat thanh cong',
-            'data': {'ma_ban': ban.ma_ban, 'ten_ban': ban.ten_ban, 'trang_thai': ban.trang_thai}
-        })
-    except Ban.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'Khong tim thay ban'}, status=404)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    def post(self, request):
+        serializer = BanSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=400)
 
-@csrf_exempt
-@require_http_methods(["PATCH"])
-def api_ban_update_status(request, ma_ban):
-    """PATCH cap nhat trang thai ban - CHI NHAN VIEN"""
-    if not check_staff_permission(request):
-        return JsonResponse({'status': 'error', 'message': 'Khong co quyen truy cap'}, status=403)
-    try:
-        ban = Ban.objects.get(ma_ban=ma_ban)
-        body = json.loads(request.body)
-        trang_thai = body.get('trang_thai')
+
+# ================= CHI TIET BAN =================
+@method_decorator(csrf_exempt, name='dispatch')
+class BanDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsStaff]
+
+    def get_object(self, ma_ban):
+        try:
+            return Ban.objects.get(ma_ban=ma_ban)
+        except Ban.DoesNotExist:
+            return None
+
+    def get(self, request, ma_ban):
+        ban = self.get_object(ma_ban)
+        if not ban:
+            return Response({'error': 'Bàn không tồn tại'}, status=404)
+        return Response(BanSerializer(ban).data)
+
+    def put(self, request, ma_ban):
+        ban = self.get_object(ma_ban)
+        if not ban:
+            return Response({'error': 'Bàn không tồn tại'}, status=404)
+
+        serializer = BanSerializer(ban, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+    def delete(self, request, ma_ban):
+        ban = self.get_object(ma_ban)
+        if not ban:
+            return Response({'error': 'Bàn không tồn tại'}, status=404)
+
+        ban.delete()
+        return Response(
+            {'message': 'Xóa bàn thành công'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+# ================= DOI TRANG THAI BAN =================
+@method_decorator(csrf_exempt, name='dispatch')
+class BanChangeStatusAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsStaff]
+
+    def patch(self, request, ma_ban):
+        try:
+            ban = Ban.objects.get(ma_ban=ma_ban)
+        except Ban.DoesNotExist:
+            return Response({'error': 'Bàn không tồn tại'}, status=404)
+
+        trang_thai = request.data.get('trang_thai')
         if not trang_thai:
-            return JsonResponse({'status': 'error', 'message': 'Thieu trang_thai'}, status=400)
+            return Response(
+                {'error': 'Thiếu trạng thái mới'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         ban.trang_thai = trang_thai
         ban.save()
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Cap nhat trang thai thanh cong',
-            'data': {'ma_ban': ban.ma_ban, 'ten_ban': ban.ten_ban, 'trang_thai': ban.trang_thai}
-        })
-    except Ban.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'Khong tim thay ban'}, status=404)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def api_ban_delete(request, ma_ban):
-    """DELETE xoa ban - CHI NHAN VIEN"""
-    if not check_staff_permission(request):
-        return JsonResponse({'status': 'error', 'message': 'Khong co quyen truy cap'}, status=403)
-    try:
-        ban = Ban.objects.get(ma_ban=ma_ban)
-        ban.delete()
-        return JsonResponse({'status': 'success', 'message': 'Xoa ban thanh cong'})
-    except Ban.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'Khong tim thay ban'}, status=404)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        return Response({
+            'message': 'Cập nhật trạng thái bàn thành công',
+            'ma_ban': ban.ma_ban,
+            'ten_ban': ban.ten_ban,
+            'trang_thai': ban.trang_thai
+        })
