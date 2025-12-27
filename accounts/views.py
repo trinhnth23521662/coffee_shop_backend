@@ -2,203 +2,194 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from .models import User, NhanVien, KhachHang
+from rest_framework.permissions import IsAuthenticated
 
-# ================= LOGIN =================
+from rest_framework import status
+
+from .models import User, NhanVien, KhachHang
+from .permissions import IsLoggedIn, IsAdmin, IsStaff, IsCustomer
+
+
+# ================= AUTH =================
 @method_decorator(csrf_exempt, name='dispatch')
 class LoginAPIView(APIView):
     authentication_classes = []
     permission_classes = []
 
     def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
+        ten_dang_nhap = request.data.get('username')
+        mat_khau = request.data.get('password')
 
-        if not username or not password:
-            return Response({'error': 'Thiếu thông tin'}, status=400)
+        if not ten_dang_nhap or not mat_khau:
+            return Response(
+                {'error': 'Thiếu username hoặc password'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        user = User.objects.filter(ten_dang_nhap=username, mat_khau=password).first()
-
-        request.session['user_id'] = user.ma_nd
-        request.session['vai_tro'] = user.vai_tro
+        user = User.objects.filter(
+            ten_dang_nhap=ten_dang_nhap,
+            mat_khau=mat_khau
+        ).first()
 
         if not user:
-            return Response({'error': 'Sai tài khoản hoặc mật khẩu'}, status=401)
+            return Response(
+                {'error': 'Sai tài khoản hoặc mật khẩu'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
 
-        # menu theo vai trò
+        # ===== LƯU SESSION =====
+        request.session['user_id'] = user.ma_nd
+        request.session['role'] = user.vai_tro
+
+        # ===== ĐIỀU HƯỚNG DASHBOARD =====
         if user.vai_tro == 'Admin':
-            menu = [{'name': 'Quản lý nhân viên', 'url': request.build_absolute_uri('/api/auth/admin/employees/')},
-                    {'name': 'Báo cáo', 'url': request.build_absolute_uri('/api/auth/admin/reports/')},
-                    {'name': 'Quản lý bàn', 'url': request.build_absolute_uri('/api/tables/')},]
+            redirect_to = '/api/auth/admin/dashboard/'
         elif user.vai_tro == 'Nhân viên':
-            menu = [{'name': 'Đơn hàng', 'url': request.build_absolute_uri('/api/auth/staff/orders/')}]
+            redirect_to = '/api/auth/staff/dashboard/'
+        elif user.vai_tro == 'Khách hàng':
+            redirect_to = '/api/auth/customer/dashboard/'
         else:
-            menu = [{'name': 'Sản phẩm', 'url': request.build_absolute_uri('/api/auth/customer/products/')}]
+            redirect_to = None
 
         return Response({
             'message': 'Đăng nhập thành công',
-            'user_id': user.ma_nd,
-            'username': user.ten_dang_nhap,
-            'role': user.vai_tro,
-            'menu': menu
+            'ma_nd': user.ma_nd,
+            'ten_dang_nhap': user.ten_dang_nhap,
+            'vai_tro': user.vai_tro,
+            'redirect_to': '/api/auth/dashboard/'
         })
 
 
-# ================= REGISTER =================
 @method_decorator(csrf_exempt, name='dispatch')
 class RegisterAPIView(APIView):
     authentication_classes = []
     permission_classes = []
 
     def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
+        ten_dang_nhap = request.data.get('username')
+        mat_khau = request.data.get('password')
         ho_ten = request.data.get('ho_ten')
         sdt = request.data.get('sdt')
         dia_chi = request.data.get('dia_chi')
 
-        if not username or not password or not ho_ten:
-            return Response({'error': 'Thiếu thông tin'}, status=400)
+        if not ten_dang_nhap or not mat_khau or not ho_ten:
+            return Response(
+                {'error': 'Thiếu thông tin bắt buộc'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        if User.objects.filter(ten_dang_nhap=username).exists():
-            return Response({'error': 'Username đã tồn tại'}, status=400)
+        if User.objects.filter(ten_dang_nhap=ten_dang_nhap).exists():
+            return Response(
+                {'error': 'Username đã tồn tại'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         user = User.objects.create(
-            ten_dang_nhap=username,
-            mat_khau=password,
+            ten_dang_nhap=ten_dang_nhap,
+            mat_khau=mat_khau,
             vai_tro='Khách hàng'
         )
 
         KhachHang.objects.create(
+            ma_nd=user,
             ho_ten=ho_ten,
             sdt=sdt,
             dia_chi=dia_chi,
-            loai_khach='online',
-            ma_nd=user
+            loai_khach='online'
         )
 
-        return Response({
-            'message': 'Đăng ký thành công',
-            'username': user.ten_dang_nhap,
-            'role': user.vai_tro
-        }, status=201)
+        return Response(
+            {'message': 'Đăng ký thành công'},
+            status=status.HTTP_201_CREATED
+        )
 
 
-# ================= ADMIN =================
+# ================= DASHBOARD =================
 @method_decorator(csrf_exempt, name='dispatch')
-class AdminDashboardAPIView(APIView):
+class DashboardAPIView(APIView):
     def get(self, request):
-        return Response({'message': 'Admin Dashboard'})
+        role = request.session.get('role')
 
-@method_decorator(csrf_exempt, name='dispatch')
-class EmployeeAPIView(APIView):
-    def get(self, request, id=None):
-        if id:
-            # Lấy chi tiết nhân viên theo ID
-            try:
-                u = User.objects.get(ma_nd=id, vai_tro='Nhân viên')
-                nhanvien = NhanVien.objects.get(ma_nd=u)
-                data = {
-                    'id': u.ma_nd,
-                    'username': u.ten_dang_nhap,
-                    'ho_ten': nhanvien.ho_ten,
-                    'sdt': nhanvien.sdt,
-                    'dia_chi': nhanvien.dia_chi,
+        if not role:
+            return Response(
+                {'error': 'Chưa đăng nhập'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        if role == 'Admin':
+            data = {
+                'role': role,
+                'features': {
+                    'employees': {
+                        'list': 'GET /api/admin/employees/',
+                        'create': 'POST /api/admin/employees/',
+                        'detail': 'GET /api/admin/employees/{id}/',
+                        'update': 'PUT /api/admin/employees/{id}/',
+                        'delete': 'DELETE /api/admin/employees/{id}/',
+                    },
+                    'reports': {
+                        'overview': 'GET /api/admin/reports/',
+                    },
+                    'promotions': {
+                        'list': 'GET /api/admin/promotions/',
+                        'create': 'POST /api/admin/promotions/',
+                        'detail': 'GET /api/admin/promotions/{id}/',
+                        'update': 'PUT /api/admin/promotions/{id}/',
+                        'delete': 'DELETE /api/admin/promotions/{id}/',
+                    }
                 }
-                return Response(data)
-            except User.DoesNotExist:
-                return Response({'error': 'Nhân viên không tồn tại'}, status=404)
-            except NhanVien.DoesNotExist:
-                return Response({'error': 'Thông tin nhân viên không tồn tại'}, status=404)
+            }
+        elif role == 'Nhân viên':
+            data = {
+                'role': role,
+                'features': {
+                    'products': {
+                        'list': 'GET /api/staff/menu/sanpham/',
+                        'create': 'POST /api/staff/menu/sanpham/',
+                        'detail': 'GET /api/staff/menu/sanpham/{id}/',
+                        'update': 'PUT /api/staff/menu/sanpham/{id}/',
+                        'delete': 'DELETE /api/staff/menu/sanpham/{id}/',
+                    },
+                    'categories': {
+                        'list': 'GET /api/staff/menu/loaisp/',
+                        'create': 'POST /api/staff/menu/loaisp/',
+                        'update': 'PUT /api/staff/menu/loaisp/{id}/',
+                        'delete': 'DELETE /api/staff/menu/loaisp/{id}/',
+                    },
+                    'tables': {
+                        'list': 'GET /api/staff/tables/',
+                        'create': 'POST /api/staff/tables/',
+                        'detail': 'GET /api/staff/tables/{id}/',
+                        'update': 'PUT /api/staff/tables/{id}/',
+                        'change_status': 'PATCH /api/staff/tables/{id}/status/',
+                    },
+                    'orders': {
+                        'create': 'POST /api/staff/orders/',
+                        'detail': 'GET /api/staff/orders/{id}/',
+                        'add_item': 'POST /api/staff/orders/{id}/items/',
+                    }
+                }
+            }
+        elif role == 'Khách hàng':
+            data = {
+                'role': role,
+                'features': {
+                    'menu': {
+                        'view': 'GET /api/public/menu/',
+                    },
+                    'tables': {
+                        'view': 'GET /api/public/tables/',
+                    },
+                    'promotions': {
+                        'list': 'GET /api/admin/promotions/',
+                    }
+                }
+            }
+
         else:
-            # Lấy danh sách tất cả nhân viên
-            staffs = User.objects.filter(vai_tro='Nhân viên')
-            data = []
-            for u in staffs:
-                try:
-                    nhanvien = NhanVien.objects.get(ma_nd=u)
-                    data.append({
-                        'id': u.ma_nd,
-                        'username': u.ten_dang_nhap,
-                        'ho_ten': nhanvien.ho_ten,
-                        'sdt': nhanvien.sdt,
-                        'dia_chi': nhanvien.dia_chi,
-                    })
-                except NhanVien.DoesNotExist:
-                    data.append({
-                        'id': u.ma_nd,
-                        'username': u.ten_dang_nhap,
-                        'ho_ten': '',
-                        'sdt': '',
-                        'dia_chi': '',
-                    })
-            return Response(data)
+            data = {
+                'role': role,
+                'features': {}
+            }
 
-    def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        ho_ten = request.data.get('ho_ten')
-        sdt = request.data.get('sdt')
-        dia_chi = request.data.get('dia_chi')
-
-        if not username or not password or not ho_ten:
-            return Response({'error': 'Thiếu thông tin'}, status=400)
-
-        if User.objects.filter(ten_dang_nhap=username).exists():
-            return Response({'error': 'Username đã tồn tại'}, status=400)
-
-        user = User.objects.create(
-            ten_dang_nhap=username,
-            mat_khau=password,
-            vai_tro='Nhân viên'
-        )
-
-        NhanVien.objects.create(
-            ho_ten=ho_ten,
-            sdt=sdt,
-            dia_chi=dia_chi,
-            ma_nd=user
-        )
-
-        return Response({'message': 'Tạo nhân viên thành công'}, status=201)
-
-    def delete(self, request, id=None):
-        if not id:
-            return Response({'error': 'ID nhân viên bắt buộc'}, status=400)
-        try:
-            user = User.objects.get(ma_nd=id, vai_tro='Nhân viên')
-            # Xóa thông tin nhân viên trước
-            try:
-                nhanvien = NhanVien.objects.get(ma_nd=user)
-                nhanvien.delete()
-            except NhanVien.DoesNotExist:
-                pass
-            # Xóa user
-            user.delete()
-            return Response({'message': 'Xóa nhân viên thành công'})
-        except User.DoesNotExist:
-            return Response({'error': 'Nhân viên không tồn tại'}, status=404)
-
-@method_decorator(csrf_exempt, name='dispatch')
-class ReportAPIView(APIView):
-    def get(self, request):
-        return Response({
-            'total_users': User.objects.count(),
-            'staff': User.objects.filter(vai_tro='Nhân viên').count(),
-            'customers': User.objects.filter(vai_tro='Khách hàng').count()
-        })
-
-
-# ================= STAFF =================
-@method_decorator(csrf_exempt, name='dispatch')
-class StaffDashboardAPIView(APIView):
-    def get(self, request):
-        return Response({'message': 'Staff Dashboard'})
-
-
-# ================= CUSTOMER =================
-@method_decorator(csrf_exempt, name='dispatch')
-class CustomerDashboardAPIView(APIView):
-    def get(self, request):
-        return Response({'message': 'Customer Dashboard'})
+        return Response(data)
