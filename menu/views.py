@@ -1,181 +1,146 @@
-from django.http import JsonResponse
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
-from .models import LoaiSP, SanPham
+from django.utils.decorators import method_decorator
 from decimal import Decimal
-import json
 
-# ============= HELPER FUNCTION =============
-def check_staff_permission(request):
-    """Kiem tra quyen Nhan vien"""
-    vai_tro = request.session.get('vai_tro')
-    if vai_tro != 'Nhân viên':
-        return False
-    return True
+from accounts.permissions import IsStaff
+from .models import LoaiSP, SanPham
 
-# ============= LOAI SAN PHAM API =============
-@csrf_exempt
-@require_http_methods(["GET"])
-def api_loaisp_list(request):
-    """GET danh sach loai san pham"""
-    loai_sps = LoaiSP.objects.all()
-    data = [{
-        'ma_loaisp': loai.ma_loaisp,
-        'ten_loaisp': loai.ten_loaisp
-    } for loai in loai_sps]
-    return JsonResponse({'status': 'success', 'data': data, 'total': len(data)})
 
-@csrf_exempt
-@require_http_methods(["POST"])
-def api_loaisp_create(request):
-    """POST them loai san pham - CHI NHAN VIEN"""
-    if not check_staff_permission(request):
-        return JsonResponse({'status': 'error', 'message': 'Khong co quyen truy cap'}, status=403)
-    try:
-        body = json.loads(request.body)
-        ten_loaisp = body.get('ten_loaisp')
+# ================= LOAI SAN PHAM =================
+@method_decorator(csrf_exempt, name='dispatch')
+class LoaiSPAPIView(APIView):
+    permission_classes = [IsStaff]
+
+    def get(self, request):
+        loaisp = LoaiSP.objects.all()
+        return Response([
+            {
+                "ma_loaisp": l.ma_loaisp,
+                "ten_loaisp": l.ten_loaisp
+            } for l in loaisp
+        ])
+
+    def post(self, request):
+        ten_loaisp = request.data.get("ten_loaisp")
         if not ten_loaisp:
-            return JsonResponse({'status': 'error', 'message': 'Thieu ten_loaisp'}, status=400)
-        loai_sp = LoaiSP.objects.create(ten_loaisp=ten_loaisp)
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Them loai san pham thanh cong',
-            'data': {'ma_loaisp': loai_sp.ma_loaisp, 'ten_loaisp': loai_sp.ten_loaisp}
-        }, status=201)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+            return Response(
+                {"error": "Thiếu tên loại sản phẩm"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-@csrf_exempt
-@require_http_methods(["PUT"])
-def api_loaisp_update(request, ma_loaisp):
-    """PUT cap nhat loai san pham - CHI NHAN VIEN"""
-    if not check_staff_permission(request):
-        return JsonResponse({'status': 'error', 'message': 'Khong co quyen truy cap'}, status=403)
-    try:
-        loai_sp = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
-        body = json.loads(request.body)
-        loai_sp.ten_loaisp = body.get('ten_loaisp', loai_sp.ten_loaisp)
-        loai_sp.save()
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Cap nhat thanh cong',
-            'data': {'ma_loaisp': loai_sp.ma_loaisp, 'ten_loaisp': loai_sp.ten_loaisp}
-        })
-    except LoaiSP.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'Khong tim thay loai san pham'}, status=404)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def api_loaisp_delete(request, ma_loaisp):
-    """DELETE xoa loai san pham - CHI NHAN VIEN"""
-    if not check_staff_permission(request):
-        return JsonResponse({'status': 'error', 'message': 'Khong co quyen truy cap'}, status=403)
-    try:
-        loai_sp = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
-        loai_sp.delete()
-        return JsonResponse({'status': 'success', 'message': 'Xoa thanh cong'})
-    except LoaiSP.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'Khong tim thay loai san pham'}, status=404)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
-# ============= SAN PHAM API =============
-@csrf_exempt
-@require_http_methods(["GET"])
-def api_sanpham_list(request):
-    """GET danh sach san pham"""
-    san_phams = SanPham.objects.select_related('ma_loaisp').all()
-    data = [{
-        'ma_sp': sp.ma_sp,
-        'ten_sp': sp.ten_sp,
-        'gia': float(sp.gia),
-        'trang_thai': sp.trang_thai,
-        'ma_loaisp': sp.ma_loaisp.ma_loaisp,
-        'ten_loaisp': sp.ma_loaisp.ten_loaisp
-    } for sp in san_phams]
-    return JsonResponse({'status': 'success', 'data': data, 'total': len(data)})
-
-@csrf_exempt
-@require_http_methods(["GET"])
-def api_menu(request):
-    """GET menu (chi lay san pham con hang)"""
-    san_phams = SanPham.objects.select_related('ma_loaisp').filter(trang_thai='Còn')
-    data = [{
-        'ma_sp': sp.ma_sp,
-        'ten_sp': sp.ten_sp,
-        'gia': float(sp.gia),
-        'trang_thai': sp.trang_thai,
-        'loai': {'ma_loaisp': sp.ma_loaisp.ma_loaisp, 'ten_loaisp': sp.ma_loaisp.ten_loaisp}
-    } for sp in san_phams]
-    return JsonResponse({'status': 'success', 'data': data, 'total': len(data)})
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def api_sanpham_create(request):
-    """POST them san pham - CHI NHAN VIEN"""
-    if not check_staff_permission(request):
-        return JsonResponse({'status': 'error', 'message': 'Khong co quyen truy cap'}, status=403)
-    try:
-        body = json.loads(request.body)
-        ten_sp = body.get('ten_sp')
-        gia = body.get('gia')
-        ma_loaisp = body.get('ma_loaisp')
-        trang_thai = body.get('trang_thai', 'Còn')
-        if not all([ten_sp, gia, ma_loaisp]):
-            return JsonResponse({'status': 'error', 'message': 'Thieu thong tin bat buoc'}, status=400)
-        san_pham = SanPham.objects.create(
-            ten_sp=ten_sp,
-            gia=Decimal(str(gia)),
-            trang_thai=trang_thai,
-            ma_loaisp_id=ma_loaisp
+        loai = LoaiSP.objects.create(ten_loaisp=ten_loaisp)
+        return Response(
+            {
+                "message": "Tạo loại sản phẩm thành công",
+                "ma_loaisp": loai.ma_loaisp
+            },
+            status=status.HTTP_201_CREATED
         )
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Them san pham thanh cong',
-            'data': {'ma_sp': san_pham.ma_sp, 'ten_sp': san_pham.ten_sp, 'gia': float(san_pham.gia), 'trang_thai': san_pham.trang_thai}
-        }, status=201)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-@csrf_exempt
-@require_http_methods(["PUT"])
-def api_sanpham_update(request, ma_sp):
-    """PUT cap nhat san pham - CHI NHAN VIEN"""
-    if not check_staff_permission(request):
-        return JsonResponse({'status': 'error', 'message': 'Khong co quyen truy cap'}, status=403)
-    try:
-        san_pham = SanPham.objects.get(ma_sp=ma_sp)
-        body = json.loads(request.body)
-        san_pham.ten_sp = body.get('ten_sp', san_pham.ten_sp)
-        san_pham.gia = Decimal(str(body.get('gia', san_pham.gia)))
-        san_pham.trang_thai = body.get('trang_thai', san_pham.trang_thai)
-        if 'ma_loaisp' in body:
-            san_pham.ma_loaisp_id = body['ma_loaisp']
-        san_pham.save()
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Cap nhat thanh cong',
-            'data': {'ma_sp': san_pham.ma_sp, 'ten_sp': san_pham.ten_sp, 'gia': float(san_pham.gia), 'trang_thai': san_pham.trang_thai}
-        })
-    except SanPham.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'Khong tim thay san pham'}, status=404)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-@csrf_exempt
-@require_http_methods(["DELETE"])
-def api_sanpham_delete(request, ma_sp):
-    """DELETE mem san pham (doi trang thai thanh Het) - CHI NHAN VIEN"""
-    if not check_staff_permission(request):
-        return JsonResponse({'status': 'error', 'message': 'Khong co quyen truy cap'}, status=403)
-    try:
-        san_pham = SanPham.objects.get(ma_sp=ma_sp)
-        san_pham.trang_thai = 'Hết'
-        san_pham.save()
-        return JsonResponse({'status': 'success', 'message': 'Xoa mem thanh cong (doi trang thai thanh Het)'})
-    except SanPham.DoesNotExist:
-        return JsonResponse({'status': 'error', 'message': 'Khong tim thay san pham'}, status=404)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+@method_decorator(csrf_exempt, name='dispatch')
+class LoaiSPDetailAPIView(APIView):
+    permission_classes = [IsStaff]
+
+    def put(self, request, ma_loaisp):
+        try:
+            loai = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
+        except LoaiSP.DoesNotExist:
+            return Response({"error": "Không tìm thấy loại"}, status=404)
+
+        loai.ten_loaisp = request.data.get("ten_loaisp", loai.ten_loaisp)
+        loai.save()
+        return Response({"message": "Cập nhật loại sản phẩm thành công"})
+
+    def delete(self, request, ma_loaisp):
+        try:
+            LoaiSP.objects.get(ma_loaisp=ma_loaisp).delete()
+            return Response({"message": "Xóa loại sản phẩm thành công"})
+        except LoaiSP.DoesNotExist:
+            return Response({"error": "Không tìm thấy loại"}, status=404)
+
+
+# ================= SAN PHAM =================
+@method_decorator(csrf_exempt, name='dispatch')
+class SanPhamAPIView(APIView):
+    permission_classes = [IsStaff]
+
+    def get(self, request):
+        san_pham = SanPham.objects.select_related("ma_loaisp").all()
+        return Response([
+            {
+                "ma_sp": sp.ma_sp,
+                "ten_sp": sp.ten_sp,
+                "gia": float(sp.gia),
+                "trang_thai": sp.trang_thai,
+                "loai": sp.ma_loaisp.ten_loaisp
+            } for sp in san_pham
+        ])
+
+    def post(self, request):
+        try:
+            sp = SanPham.objects.create(
+                ten_sp=request.data["ten_sp"],
+                gia=Decimal(str(request.data["gia"])),
+                ma_loaisp_id=request.data["ma_loaisp"],
+                trang_thai=request.data.get("trang_thai", "Còn")
+            )
+            return Response(
+                {
+                    "message": "Tạo sản phẩm thành công",
+                    "ma_sp": sp.ma_sp
+                },
+                status=status.HTTP_201_CREATED
+            )
+        except Exception:
+            return Response({"error": "Dữ liệu không hợp lệ"}, status=400)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class SanPhamDetailAPIView(APIView):
+    permission_classes = [IsStaff]
+
+    def put(self, request, ma_sp):
+        try:
+            sp = SanPham.objects.get(ma_sp=ma_sp)
+        except SanPham.DoesNotExist:
+            return Response({"error": "Không tìm thấy sản phẩm"}, status=404)
+
+        sp.ten_sp = request.data.get("ten_sp", sp.ten_sp)
+        sp.gia = Decimal(str(request.data.get("gia", sp.gia)))
+        sp.trang_thai = request.data.get("trang_thai", sp.trang_thai)
+
+        if "ma_loaisp" in request.data:
+            sp.ma_loaisp_id = request.data["ma_loaisp"]
+
+        sp.save()
+        return Response({"message": "Cập nhật sản phẩm thành công"})
+
+    def delete(self, request, ma_sp):
+        try:
+            sp = SanPham.objects.get(ma_sp=ma_sp)
+            sp.trang_thai = "Hết"
+            sp.save()
+            return Response({"message": "Xóa mềm sản phẩm (Hết hàng)"})
+        except SanPham.DoesNotExist:
+            return Response({"error": "Không tìm thấy sản phẩm"}, status=404)
+
+
+# ================= PUBLIC MENU =================
+class PublicMenuAPIView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        san_pham = SanPham.objects.select_related("ma_loaisp").filter(trang_thai="Còn")
+        return Response([
+            {
+                "ma_sp": sp.ma_sp,
+                "ten_sp": sp.ten_sp,
+                "gia": float(sp.gia),
+                "loai": sp.ma_loaisp.ten_loaisp
+            } for sp in san_pham
+        ])
