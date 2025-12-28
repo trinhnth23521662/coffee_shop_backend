@@ -162,6 +162,7 @@ class DashboardAPIView(APIView):
                         'detail': 'GET /api/staff/tables/{id}/',
                         'update': 'PUT /api/staff/tables/{id}/',
                         'change_status': 'PATCH /api/staff/tables/{id}/status/',
+                        'delete': 'DELETE /api/staff/tables/{id}/',
                     },
                     'orders': {
                         'create': 'POST /api/staff/orders/',
