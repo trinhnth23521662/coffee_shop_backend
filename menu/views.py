@@ -49,16 +49,32 @@ class LoaiSPDetailAPIView(APIView):
         try:
             loai = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
         except LoaiSP.DoesNotExist:
-            return Response({"error": "Không tìm thấy loại"}, status=404)
+            return Response(
+                {"error": "Không tìm thấy loại"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         loai.ten_loaisp = request.data.get("ten_loaisp", loai.ten_loaisp)
         loai.save()
-        return Response({"message": "Cập nhật loại sản phẩm thành công"})
+
+        return Response({
+            "message": "Cập nhật loại sản phẩm thành công",
+            "data": {
+                "ma_loaisp": loai.ma_loaisp,
+                "ten_loaisp": loai.ten_loaisp
+            }
+        })
 
     def delete(self, request, ma_loaisp):
         try:
+            loai = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
             LoaiSP.objects.get(ma_loaisp=ma_loaisp).delete()
-            return Response({"message": "Xóa loại sản phẩm thành công"})
+            return Response({"message": "Xóa loại sản phẩm thành công",
+                             "data": {
+                                 "ma_loaisp": loai.ma_loaisp,
+                                 "ten_loaisp": loai.ten_loaisp
+                             }
+                             })
         except LoaiSP.DoesNotExist:
             return Response({"error": "Không tìm thấy loại"}, status=404)
 
@@ -91,7 +107,8 @@ class SanPhamAPIView(APIView):
             return Response(
                 {
                     "message": "Tạo sản phẩm thành công",
-                    "ma_sp": sp.ma_sp
+                    "ma_sp": sp.ma_sp,
+                    "ten_sp": sp.ten_sp
                 },
                 status=status.HTTP_201_CREATED
             )
@@ -102,6 +119,26 @@ class SanPhamAPIView(APIView):
 @method_decorator(csrf_exempt, name='dispatch')
 class SanPhamDetailAPIView(APIView):
     permission_classes = [IsStaff]
+
+    def get(self, request, ma_sp):
+        try:
+            sp = SanPham.objects.select_related("ma_loaisp").get(ma_sp=ma_sp)
+        except SanPham.DoesNotExist:
+            return Response(
+                {"error": "Không tìm thấy sản phẩm"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        return Response({
+            "ma_sp": sp.ma_sp,
+            "ten_sp": sp.ten_sp,
+            "gia": float(sp.gia),
+            "trang_thai": sp.trang_thai,
+            "loai": {
+                "ma_loaisp": sp.ma_loaisp.ma_loaisp,
+                "ten_loaisp": sp.ma_loaisp.ten_loaisp
+            }
+        })
 
     def put(self, request, ma_sp):
         try:
@@ -117,14 +154,22 @@ class SanPhamDetailAPIView(APIView):
             sp.ma_loaisp_id = request.data["ma_loaisp"]
 
         sp.save()
-        return Response({"message": "Cập nhật sản phẩm thành công"})
+        return Response({"message": "Cập nhật sản phẩm thành công",
+                         "ma_sp": sp.ma_sp,
+                         "ten_sp": sp.ten_sp,
+                         "gia": float(sp.gia),
+                         "trang_thai": sp.trang_thai,
+                         "loai": {
+                             "ma_loaisp": sp.ma_loaisp.ma_loaisp,
+                             "ten_loaisp": sp.ma_loaisp.ten_loaisp }
+                         })
 
     def delete(self, request, ma_sp):
         try:
             sp = SanPham.objects.get(ma_sp=ma_sp)
             sp.trang_thai = "Hết"
             sp.save()
-            return Response({"message": "Xóa mềm sản phẩm (Hết hàng)"})
+            return Response({"message": "Xóa sản phẩm (Hết hàng)"})
         except SanPham.DoesNotExist:
             return Response({"error": "Không tìm thấy sản phẩm"}, status=404)
 
