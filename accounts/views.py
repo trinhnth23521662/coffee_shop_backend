@@ -168,7 +168,18 @@ class DashboardAPIView(APIView):
                         'create': 'POST /api/staff/orders/',
                         'detail': 'GET /api/staff/orders/{id}/',
                         'add_item': 'POST /api/staff/orders/{id}/items/',
-                    }
+                        'list': 'GET /api/staff/orders/',
+                        'create_full': 'POST /api/staff/orders/create/',
+                        'add_order_item': 'POST /api/staff/orders/add-item/',
+                        'update_order_item': 'PUT /api/staff/orders/update-item/{id}/',
+                        'delete_order_item': 'DELETE /api/staff/orders/delete-item/{id}/',
+                        'process_payment': 'POST /api/staff/orders/payment/',
+                        'online_orders': {
+                            'create': 'POST /api/staff/orders/online-orders/create/',
+                            'add_item': 'POST /api/staff/orders/online-orders/add-item/',
+                            'view': 'GET /api/staff/orders/online-orders/view/',
+                            'history': 'GET /api/staff/orders/online-orders/history/'
+                        }
                 }
             }
         elif role == 'Khách hàng':
@@ -194,4 +205,5 @@ class DashboardAPIView(APIView):
             }
 
         return Response(data)
+
 
