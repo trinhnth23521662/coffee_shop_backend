@@ -1,8 +1,19 @@
 from django.db import models
-
 from accounts.models import NhanVien, KhachHang
 from menu.models import SanPham
-from tables.models import Ban
+
+class Ban(models.Model):
+    ma_ban = models.AutoField(primary_key=True)
+    ten_ban = models.CharField(max_length=100)
+    trang_thai = models.CharField(max_length=20, default='Trống')
+
+    class Meta:
+        db_table = 'Ban'
+        managed = False
+
+    def __str__(self):
+        return f"{self.ten_ban} - {self.trang_thai}"
+
 
 class DonHang(models.Model):
     ma_dh = models.AutoField(primary_key=True)
@@ -16,7 +27,7 @@ class DonHang(models.Model):
     )
 
     ban = models.ForeignKey(
-        Ban,
+        Ban,  # Thay đổi từ tables.models.Ban thành Ban
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -64,6 +75,7 @@ class DonHang(models.Model):
 
     def __str__(self):
         return f"Đơn {self.ma_dh}"
+
 
 class ChiTietDonHang(models.Model):
     ma_ctdh = models.AutoField(primary_key=True)
