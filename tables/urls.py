@@ -1,6 +1,5 @@
 from django.urls import path
 from .views import (
-    AdminReportAPIView,
     TableListAPIView,
     CreateTableAPIView,
     UpdateTableAPIView,
@@ -10,8 +9,6 @@ from .views import (
 )
 
 urlpatterns = [
-    path('admin/reports/', AdminReportAPIView.as_view()),
-
     # Danh sách bàn
     path('', TableListAPIView.as_view()),
 
@@ -30,4 +27,3 @@ urlpatterns = [
     # Xóa bàn
     path('<int:ma_ban>/delete/', DeleteTableAPIView.as_view()),
 ]
-
