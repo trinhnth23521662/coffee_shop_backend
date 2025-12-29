@@ -1,42 +1,19 @@
+# orders/urls.py
 from django.urls import path
-from .views import (
-    OrderListAPIView,
-    CreateOrderAPIView,
-    OrderDetailAPIView,
-    AddItemToOrderAPIView,
-    UpdateOrderItemAPIView,
-    DeleteOrderItemAPIView,
-    ProcessPaymentAPIView,
-    CancelOrderAPIView,
-    OrderHistoryAPIView
-)
+from . import views
 
 urlpatterns = [
-    # Order list
-    path('', OrderListAPIView.as_view()),
+    path('', views.OrderListAPIView.as_view(), name='order-list'),
+    path('create/', views.CreateOrderAPIView.as_view(), name='create-order'),
+    path('<int:ma_dh>/', views.OrderDetailAPIView.as_view(), name='order-detail'),
+    path('add-item/', views.AddItemToOrderAPIView.as_view(), name='add-order-item'),
+    path('update-item/<int:ma_ctdh>/', views.UpdateOrderItemAPIView.as_view(), name='update-order-item'),
+    path('delete-item/<int:ma_ctdh>/', views.DeleteOrderItemAPIView.as_view(), name='delete-order-item'),
+    path('payment/', views.ProcessPaymentAPIView.as_view(), name='process-payment'),
 
-    # Create order
-    path('create/', CreateOrderAPIView.as_view()),
-
-    # Order detail
-    path('<int:ma_dh>/', OrderDetailAPIView.as_view()),
-
-    # Add item to order
-    path('<int:ma_dh>/add-item/', AddItemToOrderAPIView.as_view()),
-
-    # Process payment
-    path('<int:ma_dh>/process-payment/', ProcessPaymentAPIView.as_view()),
-
-    # Cancel order
-    path('<int:ma_dh>/cancel/', CancelOrderAPIView.as_view()),
-
-    # Update order item
-    path('items/<int:ma_ctdh>/update/', UpdateOrderItemAPIView.as_view()),
-
-    # Delete order item
-    path('items/<int:ma_ctdh>/delete/', DeleteOrderItemAPIView.as_view()),
-
-    # Order history
-    path('history/', OrderHistoryAPIView.as_view()),
-
+    # Online orders
+    path('online-orders/create/', views.CreateOnlineOrderAPIView.as_view(), name='create-online-order'),
+    path('online-orders/add-item/', views.AddOnlineOrderItemAPIView.as_view(), name='add-online-item'),
+    path('online-orders/view/', views.ViewOnlineOrderAPIView.as_view(), name='view-online-order'),
+    path('online-orders/history/', views.OnlineOrderHistoryAPIView.as_view(), name='online-order-history'),
 ]
