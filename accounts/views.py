@@ -144,17 +144,17 @@ class DashboardAPIView(APIView):
                 'role': role,
                 'features': {
                     'products': {
-                        'list': 'GET /api/staff/menu/sanpham/',
-                        'create': 'POST /api/staff/menu/sanpham/',
-                        'detail': 'GET /api/staff/menu/sanpham/{id}/',
-                        'update': 'PUT /api/staff/menu/sanpham/{id}/',
-                        'delete': 'DELETE /api/staff/menu/sanpham/{id}/',
+                        'list': 'GET /api/staff/menu/products/',
+                        'create': 'POST /api/staff/menu/products/',
+                        'detail': 'GET /api/staff/menu/products/{id}/',
+                        'update': 'PUT /api/staff/menu/products/{id}/',
+                        'delete': 'DELETE /api/staff/menu/products/{id}/',
                     },
                     'categories': {
-                        'list': 'GET /api/staff/menu/loaisp/',
-                        'create': 'POST /api/staff/menu/loaisp/',
-                        'update': 'PUT /api/staff/menu/loaisp/{id}/',
-                        'delete': 'DELETE /api/staff/menu/loaisp/{id}/',
+                        'list': 'GET /api/staff/menu/categories/',
+                        'create': 'POST /api/staff/menu/categories/',
+                        'update': 'PUT /api/staff/menu/categories/{id}/',
+                        'delete': 'DELETE /api/staff/menu/categories/{id}/',
                     },
                     'tables': {
                         'list': 'GET /api/staff/tables/',
@@ -194,3 +194,4 @@ class DashboardAPIView(APIView):
             }
 
         return Response(data)
+
