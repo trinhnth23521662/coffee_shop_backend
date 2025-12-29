@@ -5,173 +5,364 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from decimal import Decimal
 
-from accounts.permissions import IsStaff
+from accounts.permissions import IsStaff, IsAdmin
 from .models import LoaiSP, SanPham
 
 
 # ================= LOAI SAN PHAM =================
 @method_decorator(csrf_exempt, name='dispatch')
-class LoaiSPAPIView(APIView):
-    permission_classes = [IsStaff]
+class CategoryListAPIView(APIView):
+    permission_classes = [IsAdmin | IsStaff]
 
     def get(self, request):
-        loaisp = LoaiSP.objects.all()
-        return Response([
-            {
-                "ma_loaisp": l.ma_loaisp,
-                "ten_loaisp": l.ten_loaisp
-            } for l in loaisp
-        ])
+        try:
+            categories = LoaiSP.objects.all()
+            data = [{
+                "ma_loaisp": category.ma_loaisp,
+                "ten_loaisp": category.ten_loaisp
+            } for category in categories]
+
+            return Response({
+                'status': 'success',
+                'data': data,
+                'total': len(data)
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
     def post(self, request):
-        ten_loaisp = request.data.get("ten_loaisp")
-        if not ten_loaisp:
-            return Response(
-                {"error": "Thiếu tên loại sản phẩm"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        try:
+            ten_loaisp = request.data.get("ten_loaisp")
+            if not ten_loaisp:
+                return Response(
+                    {"error": "Thiếu tên loại sản phẩm"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        loai = LoaiSP.objects.create(ten_loaisp=ten_loaisp)
-        return Response(
-            {
-                "message": "Tạo loại sản phẩm thành công",
-                "ma_loaisp": loai.ma_loaisp
-            },
-            status=status.HTTP_201_CREATED
-        )
+            # Kiểm tra tên loại đã tồn tại chưa
+            if LoaiSP.objects.filter(ten_loaisp=ten_loaisp).exists():
+                return Response(
+                    {"error": "Tên loại sản phẩm đã tồn tại"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            category = LoaiSP.objects.create(ten_loaisp=ten_loaisp)
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Tạo loại sản phẩm thành công",
+                    "data": {
+                        "ma_loaisp": category.ma_loaisp,
+                        "ten_loaisp": category.ten_loaisp
+                    }
+                },
+                status=status.HTTP_201_CREATED
+            )
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class LoaiSPDetailAPIView(APIView):
-    permission_classes = [IsStaff]
+class CategoryDetailAPIView(APIView):
+    permission_classes = [IsAdmin | IsStaff]
+
+    def get(self, request, ma_loaisp):
+        try:
+            category = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
+
+            # Đếm số sản phẩm thuộc loại này
+            product_count = SanPham.objects.filter(ma_loaisp=category).count()
+
+            return Response({
+                'status': 'success',
+                'data': {
+                    "ma_loaisp": category.ma_loaisp,
+                    "ten_loaisp": category.ten_loaisp,
+                    "so_san_pham": product_count
+                }
+            })
+        except LoaiSP.DoesNotExist:
+            return Response(
+                {"error": "Không tìm thấy loại sản phẩm"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
     def put(self, request, ma_loaisp):
         try:
-            loai = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
+            category = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
         except LoaiSP.DoesNotExist:
             return Response(
-                {"error": "Không tìm thấy loại"},
+                {"error": "Không tìm thấy loại sản phẩm"},
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        loai.ten_loaisp = request.data.get("ten_loaisp", loai.ten_loaisp)
-        loai.save()
+        ten_loaisp = request.data.get("ten_loaisp")
+        if ten_loaisp:
+            # Kiểm tra tên loại đã tồn tại chưa (trừ loại hiện tại)
+            if LoaiSP.objects.filter(ten_loaisp=ten_loaisp).exclude(ma_loaisp=ma_loaisp).exists():
+                return Response(
+                    {"error": "Tên loại sản phẩm đã tồn tại"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            category.ten_loaisp = ten_loaisp
+
+        category.save()
 
         return Response({
+            "status": "success",
             "message": "Cập nhật loại sản phẩm thành công",
             "data": {
-                "ma_loaisp": loai.ma_loaisp,
-                "ten_loaisp": loai.ten_loaisp
+                "ma_loaisp": category.ma_loaisp,
+                "ten_loaisp": category.ten_loaisp
             }
         })
 
     def delete(self, request, ma_loaisp):
         try:
-            loai = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
-            LoaiSP.objects.get(ma_loaisp=ma_loaisp).delete()
-            return Response({"message": "Xóa loại sản phẩm thành công",
-                             "data": {
-                                 "ma_loaisp": loai.ma_loaisp,
-                                 "ten_loaisp": loai.ten_loaisp
-                             }
-                             })
+            category = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
+
+            # Kiểm tra xem loại có sản phẩm không
+            product_count = SanPham.objects.filter(ma_loaisp=category).count()
+            if product_count > 0:
+                return Response({
+                    "error": f"Không thể xóa loại sản phẩm. Có {product_count} sản phẩm thuộc loại này."
+                }, status=400)
+
+            category.delete()
+
+            return Response({
+                "status": "success",
+                "message": "Xóa loại sản phẩm thành công",
+                "data": {
+                    "ma_loaisp": category.ma_loaisp,
+                    "ten_loaisp": category.ten_loaisp
+                }
+            })
         except LoaiSP.DoesNotExist:
-            return Response({"error": "Không tìm thấy loại"}, status=404)
+            return Response(
+                {"error": "Không tìm thấy loại sản phẩm"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
 
 # ================= SAN PHAM =================
 @method_decorator(csrf_exempt, name='dispatch')
-class SanPhamAPIView(APIView):
-    permission_classes = [IsStaff]
+class ProductListAPIView(APIView):
+    permission_classes = [IsAdmin | IsStaff]
 
     def get(self, request):
-        san_pham = SanPham.objects.select_related("ma_loaisp").all()
-        return Response([
-            {
-                "ma_sp": sp.ma_sp,
-                "ten_sp": sp.ten_sp,
-                "gia": float(sp.gia),
-                "trang_thai": sp.trang_thai,
-                "loai": sp.ma_loaisp.ten_loaisp
-            } for sp in san_pham
-        ])
+        try:
+            # Lấy tham số filter từ query string
+            ma_loaisp = request.GET.get('ma_loaisp')
+            trang_thai = request.GET.get('trang_thai')
+
+            products = SanPham.objects.select_related("ma_loaisp").all()
+
+            # Áp dụng filter
+            if ma_loaisp:
+                products = products.filter(ma_loaisp_id=ma_loaisp)
+            if trang_thai:
+                products = products.filter(trang_thai=trang_thai)
+
+            data = [{
+                "ma_sp": product.ma_sp,
+                "ten_sp": product.ten_sp,
+                "gia": float(product.gia),
+                "trang_thai": product.trang_thai,
+                "loai": {
+                    "ma_loaisp": product.ma_loaisp.ma_loaisp,
+                    "ten_loaisp": product.ma_loaisp.ten_loaisp
+                }
+            } for product in products]
+
+            return Response({
+                'status': 'success',
+                'data': data,
+                'total': len(data),
+                'filters': {
+                    'ma_loaisp': ma_loaisp,
+                    'trang_thai': trang_thai
+                }
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
     def post(self, request):
         try:
-            sp = SanPham.objects.create(
-                ten_sp=request.data["ten_sp"],
-                gia=Decimal(str(request.data["gia"])),
-                ma_loaisp_id=request.data["ma_loaisp"],
-                trang_thai=request.data.get("trang_thai", "Còn")
+            ten_sp = request.data.get("ten_sp")
+            gia = request.data.get("gia")
+            ma_loaisp = request.data.get("ma_loaisp")
+            trang_thai = request.data.get("trang_thai", "Còn")
+
+            # Validate dữ liệu
+            if not ten_sp:
+                return Response({"error": "Thiếu tên sản phẩm"}, status=400)
+            if not gia or float(gia) <= 0:
+                return Response({"error": "Giá sản phẩm không hợp lệ"}, status=400)
+            if not ma_loaisp:
+                return Response({"error": "Thiếu loại sản phẩm"}, status=400)
+
+            # Kiểm tra loại sản phẩm tồn tại
+            try:
+                category = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
+            except LoaiSP.DoesNotExist:
+                return Response({"error": "Loại sản phẩm không tồn tại"}, status=404)
+
+            # Kiểm tra tên sản phẩm đã tồn tại chưa
+            if SanPham.objects.filter(ten_sp=ten_sp).exists():
+                return Response({"error": "Tên sản phẩm đã tồn tại"}, status=400)
+
+            product = SanPham.objects.create(
+                ten_sp=ten_sp,
+                gia=Decimal(str(gia)),
+                ma_loaisp=category,
+                trang_thai=trang_thai
             )
+
             return Response(
                 {
+                    "status": "success",
                     "message": "Tạo sản phẩm thành công",
-                    "ma_sp": sp.ma_sp,
-                    "ten_sp": sp.ten_sp
+                    "data": {
+                        "ma_sp": product.ma_sp,
+                        "ten_sp": product.ten_sp,
+                        "gia": float(product.gia),
+                        "trang_thai": product.trang_thai,
+                        "loai": {
+                            "ma_loaisp": category.ma_loaisp,
+                            "ten_loaisp": category.ten_loaisp
+                        }
+                    }
                 },
                 status=status.HTTP_201_CREATED
             )
-        except Exception:
-            return Response({"error": "Dữ liệu không hợp lệ"}, status=400)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class SanPhamDetailAPIView(APIView):
-    permission_classes = [IsStaff]
+class ProductDetailAPIView(APIView):
+    permission_classes = [IsAdmin | IsStaff]
 
     def get(self, request, ma_sp):
         try:
-            sp = SanPham.objects.select_related("ma_loaisp").get(ma_sp=ma_sp)
+            product = SanPham.objects.select_related("ma_loaisp").get(ma_sp=ma_sp)
+
+            return Response({
+                "status": "success",
+                "data": {
+                    "ma_sp": product.ma_sp,
+                    "ten_sp": product.ten_sp,
+                    "gia": float(product.gia),
+                    "trang_thai": product.trang_thai,
+                    "loai": {
+                        "ma_loaisp": product.ma_loaisp.ma_loaisp,
+                        "ten_loaisp": product.ma_loaisp.ten_loaisp
+                    }
+                }
+            })
         except SanPham.DoesNotExist:
             return Response(
                 {"error": "Không tìm thấy sản phẩm"},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-        return Response({
-            "ma_sp": sp.ma_sp,
-            "ten_sp": sp.ten_sp,
-            "gia": float(sp.gia),
-            "trang_thai": sp.trang_thai,
-            "loai": {
-                "ma_loaisp": sp.ma_loaisp.ma_loaisp,
-                "ten_loaisp": sp.ma_loaisp.ten_loaisp
-            }
-        })
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
     def put(self, request, ma_sp):
         try:
-            sp = SanPham.objects.get(ma_sp=ma_sp)
+            product = SanPham.objects.get(ma_sp=ma_sp)
         except SanPham.DoesNotExist:
             return Response({"error": "Không tìm thấy sản phẩm"}, status=404)
 
-        sp.ten_sp = request.data.get("ten_sp", sp.ten_sp)
-        sp.gia = Decimal(str(request.data.get("gia", sp.gia)))
-        sp.trang_thai = request.data.get("trang_thai", sp.trang_thai)
+        try:
+            # Cập nhật thông tin sản phẩm
+            ten_sp = request.data.get("ten_sp")
+            if ten_sp is not None:
+                # Kiểm tra tên sản phẩm đã tồn tại chưa (trừ sản phẩm hiện tại)
+                if SanPham.objects.filter(ten_sp=ten_sp).exclude(ma_sp=ma_sp).exists():
+                    return Response({"error": "Tên sản phẩm đã tồn tại"}, status=400)
+                product.ten_sp = ten_sp
 
-        if "ma_loaisp" in request.data:
-            sp.ma_loaisp_id = request.data["ma_loaisp"]
+            gia = request.data.get("gia")
+            if gia is not None:
+                if float(gia) <= 0:
+                    return Response({"error": "Giá sản phẩm không hợp lệ"}, status=400)
+                product.gia = Decimal(str(gia))
 
-        sp.save()
-        return Response({"message": "Cập nhật sản phẩm thành công",
-                         "ma_sp": sp.ma_sp,
-                         "ten_sp": sp.ten_sp,
-                         "gia": float(sp.gia),
-                         "trang_thai": sp.trang_thai,
-                         "loai": {
-                             "ma_loaisp": sp.ma_loaisp.ma_loaisp,
-                             "ten_loaisp": sp.ma_loaisp.ten_loaisp }
-                         })
+            trang_thai = request.data.get("trang_thai")
+            if trang_thai is not None:
+                product.trang_thai = trang_thai
+
+            ma_loaisp = request.data.get("ma_loaisp")
+            if ma_loaisp is not None:
+                try:
+                    category = LoaiSP.objects.get(ma_loaisp=ma_loaisp)
+                    product.ma_loaisp = category
+                except LoaiSP.DoesNotExist:
+                    return Response({"error": "Loại sản phẩm không tồn tại"}, status=404)
+
+            product.save()
+
+            return Response({
+                "status": "success",
+                "message": "Cập nhật sản phẩm thành công",
+                "data": {
+                    "ma_sp": product.ma_sp,
+                    "ten_sp": product.ten_sp,
+                    "gia": float(product.gia),
+                    "trang_thai": product.trang_thai,
+                    "loai": {
+                        "ma_loaisp": product.ma_loaisp.ma_loaisp,
+                        "ten_loaisp": product.ma_loaisp.ten_loaisp
+                    }
+                }
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
     def delete(self, request, ma_sp):
         try:
-            sp = SanPham.objects.get(ma_sp=ma_sp)
-            sp.trang_thai = "Hết"
-            sp.save()
-            return Response({"message": "Xóa sản phẩm (Hết hàng)"})
+            product = SanPham.objects.get(ma_sp=ma_sp)
+
+            # Kiểm tra xem sản phẩm có trong đơn hàng nào không
+            from orders.models import ChiTietDonHang
+            order_items = ChiTietDonHang.objects.filter(san_pham=product).exists()
+
+            if order_items:
+                # Nếu có trong đơn hàng, chỉ đổi trạng thái thành "Hết"
+                product.trang_thai = "Hết"
+                product.save()
+
+                return Response({
+                    "status": "success",
+                    "message": "Sản phẩm đã được sử dụng trong đơn hàng. Đã chuyển trạng thái thành 'Hết'",
+                    "data": {
+                        "ma_sp": product.ma_sp,
+                        "ten_sp": product.ten_sp,
+                        "trang_thai": product.trang_thai
+                    }
+                })
+            else:
+                # Nếu không có trong đơn hàng, xóa luôn
+                product.delete()
+                return Response({
+                    "status": "success",
+                    "message": "Xóa sản phẩm thành công",
+                    "data": {
+                        "ma_sp": ma_sp,
+                        "ten_sp": product.ten_sp
+                    }
+                })
+
         except SanPham.DoesNotExist:
             return Response({"error": "Không tìm thấy sản phẩm"}, status=404)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
 
 # ================= PUBLIC MENU =================
@@ -180,12 +371,44 @@ class PublicMenuAPIView(APIView):
     permission_classes = []
 
     def get(self, request):
-        san_pham = SanPham.objects.select_related("ma_loaisp").filter(trang_thai="Còn")
-        return Response([
-            {
-                "ma_sp": sp.ma_sp,
-                "ten_sp": sp.ten_sp,
-                "gia": float(sp.gia),
-                "loai": sp.ma_loaisp.ten_loaisp
-            } for sp in san_pham
-        ])
+        try:
+            # Lấy tham số filter từ query string
+            ma_loaisp = request.GET.get('ma_loaisp')
+
+            products = SanPham.objects.select_related("ma_loaisp").filter(trang_thai="Còn")
+
+            # Áp dụng filter theo loại (nếu có)
+            if ma_loaisp:
+                products = products.filter(ma_loaisp_id=ma_loaisp)
+
+            # Nhóm sản phẩm theo loại
+            categories = {}
+            for product in products:
+                category_name = product.ma_loaisp.ten_loaisp
+                if category_name not in categories:
+                    categories[category_name] = {
+                        "ma_loaisp": product.ma_loaisp.ma_loaisp,
+                        "ten_loaisp": category_name,
+                        "san_pham": []
+                    }
+
+                categories[category_name]["san_pham"].append({
+                    "ma_sp": product.ma_sp,
+                    "ten_sp": product.ten_sp,
+                    "gia": float(product.gia)
+                })
+
+            # Chuyển từ dict sang list
+            menu_data = list(categories.values())
+
+            return Response({
+                "status": "success",
+                "data": menu_data,
+                "total_categories": len(menu_data),
+                "total_products": sum(len(cat["san_pham"]) for cat in menu_data),
+                "filters": {
+                    "ma_loaisp": ma_loaisp
+                }
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
