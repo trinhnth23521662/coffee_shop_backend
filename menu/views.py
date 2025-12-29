@@ -329,26 +329,8 @@ class ProductDetailAPIView(APIView):
         try:
             product = SanPham.objects.get(ma_sp=ma_sp)
 
-            # Kiểm tra xem sản phẩm có trong đơn hàng nào không
-            from orders.models import ChiTietDonHang
-            order_items = ChiTietDonHang.objects.filter(san_pham=product).exists()
-
-            if order_items:
-                # Nếu có trong đơn hàng, chỉ đổi trạng thái thành "Hết"
-                product.trang_thai = "Hết"
-                product.save()
-
-                return Response({
-                    "status": "success",
-                    "message": "Sản phẩm đã được sử dụng trong đơn hàng. Đã chuyển trạng thái thành 'Hết'",
-                    "data": {
-                        "ma_sp": product.ma_sp,
-                        "ten_sp": product.ten_sp,
-                        "trang_thai": product.trang_thai
-                    }
-                })
-            else:
-                # Nếu không có trong đơn hàng, xóa luôn
+            # THỬ XÓA TRỰC TIẾP (giống như xóa LoaiSP)
+            try:
                 product.delete()
                 return Response({
                     "status": "success",
@@ -356,6 +338,19 @@ class ProductDetailAPIView(APIView):
                     "data": {
                         "ma_sp": ma_sp,
                         "ten_sp": product.ten_sp
+                    }
+                })
+            except Exception as delete_error:
+                # Nếu lỗi khi xóa (do có ràng buộc khóa ngoại), thì đổi trạng thái
+                product.trang_thai = "Hết"
+                product.save()
+                return Response({
+                    "status": "success",
+                    "message": "Sản phẩm đã được sử dụng trong đơn hàng. Đã chuyển trạng thái thành 'Hết'",
+                    "data": {
+                        "ma_sp": product.ma_sp,
+                        "ten_sp": product.ten_sp,
+                        "trang_thai": product.trang_thai
                     }
                 })
 
@@ -412,3 +407,4 @@ class PublicMenuAPIView(APIView):
             })
         except Exception as e:
             return Response({'error': str(e)}, status=500)
+
