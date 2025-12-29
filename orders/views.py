@@ -39,7 +39,7 @@ class CreateOrderAPIView(APIView):
             ma_ban = body.get('ma_ban')
             nguon_don = body.get('nguon_don', 'offline')
             ma_kh = body.get('ma_kh')
-            ngay_tao_str = body.get('ngay_tao')  # Format: "YYYY-MM-DD" hoac "YYYY-MM-DD HH:MM:SS"
+            ngay_tao_str = body.get('ngay_tao')  
 
             # Xu ly ngay tao
             if ngay_tao_str:
@@ -55,11 +55,10 @@ class CreateOrderAPIView(APIView):
             else:
                 ngay_tao = datetime.now()  # Mac dinh la hom nay
 
-            # Tạo đơn hàng với ma_nv lấy từ session (giống file đầu tiên)
             don_hang = DonHang(
                 ma_kh_id=ma_kh if ma_kh else None,
                 ma_ban_id=ma_ban if ma_ban else None,
-                ma_nv=request.session.get('user_id', 2),  # Lay tu session hoac mac dinh 2
+                ma_nv=request.session.get('user_id', 2),
                 nguon_don=nguon_don,
                 trang_thai='Chờ xác nhận',
                 tong_tien=0,
@@ -497,3 +496,4 @@ class OnlineOrderHistoryAPIView(APIView):
             "total": len(data),
             "data": data
         })
+
