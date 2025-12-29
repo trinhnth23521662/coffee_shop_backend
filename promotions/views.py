@@ -9,26 +9,55 @@ from accounts.permissions import IsAdmin, IsStaff
 from .models import KhuyenMai
 from .serializers import KhuyenMaiSerializer
 
+
 @method_decorator(csrf_exempt, name='dispatch')
 class PromotionAPIView(APIView):
-    def get(self, request):
-        #now = timezone.now()
+    """API cho chức năng: Xem danh sách khuyến mãi và Tạo khuyến mãi"""
 
-        khuyen_mai = KhuyenMai.objects.filter(
-            #ngay_bd__lte=now,
-            #ngay_kt__gte=now,
-            trang_thai='Đang áp dụng'
-        )
+    def get(self, request):
+        """Xem danh sách khuyến mãi"""
+        # Lấy các tham số filter từ query string
+        trang_thai = request.GET.get('trang_thai')
+        loai_km = request.GET.get('loai_km')
+        search = request.GET.get('search', '')
+
+        # Khởi tạo queryset
+        khuyen_mai = KhuyenMai.objects.all()
+
+        # Filter theo trạng thái nếu có
+        if trang_thai:
+            khuyen_mai = khuyen_mai.filter(trang_thai=trang_thai)
+
+        # Filter theo loại khuyến mãi
+        if loai_km:
+            khuyen_mai = khuyen_mai.filter(loai_km=loai_km)
+
+        # Search theo tên khuyến mãi
+        if search:
+            khuyen_mai = khuyen_mai.filter(ten_km__icontains=search)
+
+        # Order by ngày bắt đầu (mới nhất trước)
+        khuyen_mai = khuyen_mai.order_by('-ngay_bd')
 
         serializer = KhuyenMaiSerializer(khuyen_mai, many=True)
-        return Response(serializer.data)
+        return Response({
+            'status': 'success',
+            'data': serializer.data,
+            'total': khuyen_mai.count(),
+            'filters': {
+                'trang_thai': trang_thai,
+                'loai_km': loai_km,
+                'search': search
+            }
+        })
 
     def post(self, request):
+        """Tạo khuyến mãi mới"""
         vai_tro = request.session.get('vai_tro')
 
-        if vai_tro not in ['Admin', 'Nhân viên']:
+        if vai_tro not in ['Admin', 'Staff']:
             return Response(
-                {'error': 'Không có quyền tạo khuyến mãi'},
+                {'status': 'error', 'message': 'Không có quyền tạo khuyến mãi'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -36,68 +65,96 @@ class PromotionAPIView(APIView):
         if serializer.is_valid():
             serializer.save()
             return Response(
-                {'message': 'Tạo khuyến mãi thành công'},
+                {
+                    'status': 'success',
+                    'message': 'Tạo khuyến mãi thành công',
+                    'data': serializer.data
+                },
                 status=status.HTTP_201_CREATED
             )
 
-        return Response(serializer.errors, status=400)
+        return Response(
+            {'status': 'error', 'message': serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class PromotionDetailAPIView(APIView):
+    """API cho chức năng: Xem chi tiết, Sửa, Xóa khuyến mãi"""
+
+    def get_object(self, ma_km):
+        """Lấy đối tượng KhuyenMai theo mã"""
+        try:
+            return KhuyenMai.objects.get(pk=ma_km)
+        except KhuyenMai.DoesNotExist:
+            return None
 
     def get(self, request, ma_km):
-        try:
-            km = KhuyenMai.objects.get(pk=ma_km)
-        except KhuyenMai.DoesNotExist:
+        """Xem chi tiết khuyến mãi"""
+        km = self.get_object(ma_km)
+        if not km:
             return Response(
-                {'error': 'Khuyến mãi không tồn tại'},
+                {'status': 'error', 'message': 'Khuyến mãi không tồn tại'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
         serializer = KhuyenMaiSerializer(km)
-        return Response(serializer.data)
+        return Response({
+            'status': 'success',
+            'data': serializer.data
+        })
 
     def put(self, request, ma_km):
+        """Sửa khuyến mãi"""
         vai_tro = request.session.get('vai_tro')
 
-        if vai_tro not in ['Admin', 'Nhân viên']:
+        if vai_tro not in ['Admin', 'Staff']:
             return Response(
-                {'error': 'Không có quyền cập nhật khuyến mãi'},
-                status=403
+                {'status': 'error', 'message': 'Không có quyền cập nhật khuyến mãi'},
+                status=status.HTTP_403_FORBIDDEN
             )
 
-        try:
-            km = KhuyenMai.objects.get(pk=ma_km)
-        except KhuyenMai.DoesNotExist:
-            return Response({'error': 'Khuyến mãi không tồn tại'}, status=404)
+        km = self.get_object(ma_km)
+        if not km:
+            return Response(
+                {'status': 'error', 'message': 'Khuyến mãi không tồn tại'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         serializer = KhuyenMaiSerializer(km, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response({'message': 'Cập nhật thành công'})
+            return Response({
+                'status': 'success',
+                'message': 'Cập nhật khuyến mãi thành công',
+                'data': serializer.data
+            })
 
-        return Response(serializer.errors, status=400)
+        return Response(
+            {'status': 'error', 'message': serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     def delete(self, request, ma_km):
+        """Xóa khuyến mãi"""
         vai_tro = request.session.get('vai_tro')
 
         if vai_tro != 'Admin':
             return Response(
-                {'error': 'Chỉ Admin được xóa khuyến mãi'},
+                {'status': 'error', 'message': 'Chỉ Admin được xóa khuyến mãi'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        try:
-            km = KhuyenMai.objects.get(pk=ma_km)
-        except KhuyenMai.DoesNotExist:
+        km = self.get_object(ma_km)
+        if not km:
             return Response(
-                {'error': 'Khuyến mãi không tồn tại'},
+                {'status': 'error', 'message': 'Khuyến mãi không tồn tại'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
         km.delete()
         return Response(
-            {'message': 'Xóa khuyến mãi thành công'},
-            status=status.HTTP_200_OK
+            {'status': 'success', 'message': 'Xóa khuyến mãi thành công'},
+            status=status.HTTP_204_NO_CONTENT
         )
-
