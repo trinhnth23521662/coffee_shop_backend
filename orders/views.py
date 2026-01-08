@@ -64,21 +64,21 @@ class TaoDonHangAPIView(APIView):
             try:
                 ban = Ban.objects.get(ma_ban=ma_ban)
 
-                # ✅ kiểm tra trạng thái bàn
+                # kiểm tra trạng thái bàn
                 if ban.trang_thai != 'Trống':
                     return Response(
                         {'error': 'Bàn đang được sử dụng'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                # ✅ chuyển bàn sang đang phục vụ
+                # chuyển bàn sang đang phục vụ
                 ban.trang_thai = 'Đang phục vụ'
                 ban.save()
 
             except Ban.DoesNotExist:
                 return Response({'error': 'Bàn không tồn tại'}, status=404)
 
-        # ✅ tạo đơn hàng
+        #tạo đơn hàng
         don = DonHang.objects.create(
             nhan_vien=nhan_vien,
             ban=ban,
@@ -97,9 +97,11 @@ class ThemChiTietDonAPIView(APIView):
     permission_classes = [IsStaff]
 
     def post(self, request, ma_dh):
-        ma_sp = request.data.get('ma_sp')
-        so_luong = int(request.data.get('so_luong', 1))
-        ghi_chu = request.data.get('ghi_chu', '')
+        body = request.data
+
+        ma_sp = body.get('ma_sp')
+        so_luong = int(body.get('so_luong', 1))
+        ghi_chu = body.get('ghi_chu', '')
 
         if not ma_sp:
             return Response({'error': 'Thiếu mã sản phẩm'}, status=400)
@@ -108,23 +110,62 @@ class ThemChiTietDonAPIView(APIView):
             don = DonHang.objects.get(ma_dh=ma_dh)
             sp = SanPham.objects.get(ma_sp=ma_sp)
         except (DonHang.DoesNotExist, SanPham.DoesNotExist):
-            return Response({'error': 'Không tìm thấy đơn hoặc sản phẩm'}, status=404)
+            return Response(
+                {'error': 'Không tìm thấy đơn hoặc sản phẩm'},
+                status=404
+            )
 
-        ChiTietDonHang.objects.create(
+        # ===== THÊM / CẬP NHẬT CHI TIẾT =====
+        item, created = ChiTietDonHang.objects.get_or_create(
             don_hang=don,
             san_pham=sp,
-            so_luong=so_luong,
-            ghi_chu=ghi_chu
+            defaults={
+                'so_luong': so_luong,
+                'ghi_chu': ghi_chu
+            }
         )
 
-        # cập nhật tổng tiền
-        don.tong_tien = sum(
-            ct.san_pham.gia * ct.so_luong
+        if not created:
+            item.so_luong += so_luong
+            item.ghi_chu = ghi_chu
+            item.save()
+
+        # ===== TÍNH TỔNG TIỀN =====
+        tong_tien = sum(
+            ct.so_luong * ct.san_pham.gia
             for ct in don.chi_tiet.all()
         )
+
+        # ===== TÍNH GIẢM GIÁ (NẾU CÓ) =====
+        giam_gia, km = tinh_giam_gia(tong_tien)
+
+        # ===== CẬP NHẬT ĐƠN =====
+        don.tong_tien = tong_tien
+        don.giam_gia = giam_gia
         don.save()
 
-        return Response({'message': 'Thêm món vào đơn thành công'})
+        return Response({
+            'status': 'success',
+            'ma_dh': don.ma_dh,
+            'tong_tien': tong_tien,
+            'giam_gia': giam_gia,
+            'can_thanh_toan': tong_tien - giam_gia,
+            'khuyen_mai': {
+                'ten_km': km.ten_km,
+                'loai_km': km.loai_km,
+                'gia_tri': km.gia_tri,
+                'dieu_kien': km.dieu_kien
+            } if km else None,
+            'items': [
+                {
+                    'san_pham': ct.san_pham.ten_sp,
+                    'so_luong': ct.so_luong,
+                    'don_gia': ct.san_pham.gia,
+                    'thanh_tien': ct.so_luong * ct.san_pham.gia
+                }
+                for ct in don.chi_tiet.all()
+            ]
+        }, status=200)
 
 class XemDonHangAPIView(APIView):
     permission_classes = [IsAdmin | IsStaff]
