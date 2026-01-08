@@ -144,17 +144,17 @@ class DashboardAPIView(APIView):
                 'role': role,
                 'features': {
                     'products': {
-                        'list': 'GET /api/staff/menu/products/',
-                        'create': 'POST /api/staff/menu/products/',
-                        'detail': 'GET /api/staff/menu/products/{id}/',
-                        'update': 'PUT /api/staff/menu/products/{id}/',
-                        'delete': 'DELETE /api/staff/menu/products/{id}/',
+                        'list': 'GET /api/staff/menu/sanpham/',
+                        'create': 'POST /api/staff/menu/sanpham/',
+                        'detail': 'GET /api/staff/menu/sanpham/{id}/',
+                        'update': 'PUT /api/staff/menu/sanpham/{id}/',
+                        'delete': 'DELETE /api/staff/menu/sanpham/{id}/',
                     },
                     'categories': {
-                        'list': 'GET /api/staff/menu/categories/',
-                        'create': 'POST /api/staff/menu/categories/',
-                        'update': 'PUT /api/staff/menu/categories/{id}/',
-                        'delete': 'DELETE /api/staff/menu/categories/{id}/',
+                        'list': 'GET /api/staff/menu/loaisp/',
+                        'create': 'POST /api/staff/menu/loaisp/',
+                        'update': 'PUT /api/staff/menu/loaisp/{id}/',
+                        'delete': 'DELETE /api/staff/menu/loaisp/{id}/',
                     },
                     'tables': {
                         'list': 'GET /api/staff/tables/',
@@ -168,18 +168,8 @@ class DashboardAPIView(APIView):
                         'create': 'POST /api/staff/orders/',
                         'detail': 'GET /api/staff/orders/{id}/',
                         'add_item': 'POST /api/staff/orders/{id}/items/',
-                        'list': 'GET /api/staff/orders/',
-                        'create_full': 'POST /api/staff/orders/create/',
-                        'add_order_item': 'POST /api/staff/orders/add-item/',
-                        'update_order_item': 'PUT /api/staff/orders/update-item/{id}/',
-                        'delete_order_item': 'DELETE /api/staff/orders/delete-item/{id}/',
-                        'process_payment': 'POST /api/staff/orders/payment/',
-                        'online_orders': {
-                            'create': 'POST /api/staff/orders/online-orders/create/',
-                            'add_item': 'POST /api/staff/orders/online-orders/add-item/',
-                            'view': 'GET /api/staff/orders/online-orders/view/',
-                            'history': 'GET /api/staff/orders/online-orders/history/'
-                        }
+                        'list': 'GET /api/staff/orders/'
+                    }
                 }
             }
         elif role == 'Khách hàng':
@@ -189,11 +179,11 @@ class DashboardAPIView(APIView):
                     'menu': {
                         'view': 'GET /api/public/menu/',
                     },
-                    'tables': {
-                        'view': 'GET /api/public/tables/',
-                    },
                     'promotions': {
                         'list': 'GET /api/admin/promotions/',
+                    },
+                    'orders': {
+                        'order': 'POST /api/staff/orders/',
                     }
                 }
             }
@@ -205,5 +195,3 @@ class DashboardAPIView(APIView):
             }
 
         return Response(data)
-
-
